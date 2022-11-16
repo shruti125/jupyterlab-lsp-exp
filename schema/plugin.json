@@ -1,0 +1,8 @@
+{
+  "jupyter.lab.shortcuts": [],
+  "title": "lsp_tests",
+  "description": "lsp_tests settings.",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+}
