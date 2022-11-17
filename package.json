@@ -7,9 +7,9 @@
     "jupyterlab",
     "jupyterlab-extension"
   ],
-  "homepage": "https://github.com/hbcarlos/lsp_tests",
+  "homepage": "https://github.com/hbcarlos/jupyterlab-lsp-exp",
   "bugs": {
-    "url": "https://github.com/hbcarlos/lsp_tests/issues"
+    "url": "https://github.com/hbcarlos/jupyterlab-lsp-exp/issues"
   },
   "license": "BSD-3-Clause",
   "author": {
@@ -26,7 +26,7 @@
   "style": "style/index.css",
   "repository": {
     "type": "git",
-    "url": "https://github.com/hbcarlos/lsp_tests.git"
+    "url": "https://github.com/hbcarlos/jupyterlab-lsp-exp.git"
   },
   "scripts": {
     "build": "jlpm build:lib && jlpm build:labextension:dev",
@@ -55,9 +55,11 @@
   },
   "dependencies": {
     "@jupyterlab/application": "^4.0.0-alpha.15",
+    "@jupyterlab/apputils": "^4.0.0-alpha.15",
     "@jupyterlab/completer": "^4.0.0-alpha.15",
     "@jupyterlab/fileeditor": "^4.0.0-alpha.15",
     "@jupyterlab/lsp": "^4.0.0-alpha.15",
+    "@jupyterlab/rendermime": "^4.0.0-alpha.15",
     "@jupyterlab/settingregistry": "^4.0.0-alpha.15"
   },
   "devDependencies": {

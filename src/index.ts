@@ -3,9 +3,19 @@ import {
   JupyterFrontEndPlugin
 } from '@jupyterlab/application';
 
+import { MainAreaWidget } from '@jupyterlab/apputils';
+
+import {
+  IRenderMimeRegistry
+} from '@jupyterlab/rendermime';
+
 import { IEditorTracker } from '@jupyterlab/fileeditor';
 
 import { IFeature, ILSPDocumentConnectionManager, ILSPFeatureManager } from "@jupyterlab/lsp";
+
+import { Widget } from '@lumino/widgets';
+
+import { UUID } from '@lumino/coreutils';
 
 /**
  * Initialization data for the lsp_tests extension.
@@ -13,9 +23,15 @@ import { IFeature, ILSPDocumentConnectionManager, ILSPFeatureManager } from "@ju
 const plugin: JupyterFrontEndPlugin<void> = {
   id: 'lsp_tests:plugin',
   autoStart: true,
-  requires: [IEditorTracker],
+  requires: [IEditorTracker, IRenderMimeRegistry],
   optional: [ILSPDocumentConnectionManager, ILSPFeatureManager],
-  activate: (app: JupyterFrontEnd, editorTracker: IEditorTracker, lspManager?: ILSPDocumentConnectionManager, featureManager?: ILSPFeatureManager) => {
+  activate: (
+    app: JupyterFrontEnd,
+    editorTracker: IEditorTracker,
+    rendermime: IRenderMimeRegistry,
+    lspManager?: ILSPDocumentConnectionManager,
+    featureManager?: ILSPFeatureManager
+  ) => {
     console.log('JupyterLab extension lsp_tests is activated!', lspManager, featureManager);
 
     if (!lspManager || !featureManager) {
@@ -85,8 +101,19 @@ const plugin: JupyterFrontEndPlugin<void> = {
         lspConnection.clientRequests['textDocument/signatureHelp'].request({
           position: { character: selection.start.column, line: selection.start.line },
           textDocument: { uri: adapter.virtualDocument.uri }
-        }).then(resp => {
+        }).then(async resp => {
           console.debug("resp", resp);
+          const documentation = resp.signatures[0].documentation;
+          if (!documentation) {
+            console.debug("No Documentation");
+            return;
+          }
+          const docs = await rendermime.markdownParser?.render((documentation as any).value)!;
+          const panel = new Widget();
+          panel.id = UUID.uuid4();
+          panel.node.innerHTML = docs;
+          app.shell.add(new MainAreaWidget({ content: panel }));
+
         }).catch(e => {
           console.debug(e);
         });
