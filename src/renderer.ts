@@ -1,4 +1,4 @@
-import { IRenderMime, IRenderMimeRegistry } from '@jupyterlab/rendermime';
+import { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import { CompletionHandler, Completer } from '@jupyterlab/completer';
 import { JupyterFrontEnd } from '@jupyterlab/application';
 
@@ -6,31 +6,23 @@ export class BBCompletionRenderer
   extends Completer.Renderer
   implements Completer.IRenderer
 {
-  private app: JupyterFrontEnd;
-  private renderMimeRegistry: IRenderMimeRegistry;
-  private namespaces: Map<string, string>;
+  // private app: JupyterFrontEnd;
+  // private renderMimeRegistry: IRenderMimeRegistry;
+  // private namespaces: Map<string, string>;
 
   constructor(app: JupyterFrontEnd, renderMimeRegistry: IRenderMimeRegistry) {
     super();
-    this.app = app;
-    this.renderMimeRegistry = renderMimeRegistry;
-    this.namespaces = new Map<string, string>();
+    // this.app = app;
+    // this.renderMimeRegistry = renderMimeRegistry;
+    // this.namespaces = new Map<string, string>();
   }
-  // constructor() {
-  //   super();
-  // }
 
   createCompletionItemNode(
     item: CompletionHandler.ICompletionItem,
     orderedTypes: string[]
   ): HTMLLIElement {
-    const label = item.label;
-    console.log('In createCompletionItemNode:  ' + label);
-    if (label.includes('.')) {
-      const tempLabel = item.label;
-      item.label = label.substring(label.lastIndexOf('.') + 1);
-      this.namespaces.set(item.label, tempLabel);
-    }
+    // const label = item.label;
+    // console.log('In createCompletionItemNode:  ' + label);
     const li = super.createCompletionItemNode(item, orderedTypes);
     return li;
   }

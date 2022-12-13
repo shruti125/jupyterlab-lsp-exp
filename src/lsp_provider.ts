@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-non-null-assertion */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   Completer,
@@ -7,35 +8,18 @@ import {
   // CompleterModel
 } from '@jupyterlab/completer';
 import { IDocumentWidget } from '@jupyterlab/docregistry';
-import { LabIcon } from '@jupyterlab/ui-components';
 import { ILSPDocumentConnectionManager } from '@jupyterlab/lsp';
 import { JupyterFrontEnd } from '@jupyterlab/application';
 import { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import { BBCompletionRenderer } from './renderer';
-// import { Widget } from '@lumino/widgets';
-
-export interface ICompletionsSource {
-  /**
-   * The name displayed in the GUI
-   */
-  name: string;
-  /**
-   * The higher the number the higher the priority
-   */
-  priority: number;
-  /**
-   * The icon to be displayed if no type icon is present
-   */
-  fallbackIcon?: LabIcon;
-}
-
-export interface ICompletionsReply
-  extends CompletionHandler.ICompletionItemsReply {
-  // TODO: it is not clear when the source is set here and when on IExtendedCompletionItem.
-  //  it might be good to separate the two stages for both interfaces
-  source: ICompletionsSource | null;
-  items: CompletionHandler.ICompletionItem[];
-}
+import { VirtualDocument } from '@jupyterlab/lsp';
+import {
+  IEditorPosition,
+  // IRootPosition,
+  ISourcePosition
+} from '@jupyterlab/lsp';
+import { CodeEditor } from '@jupyterlab/codeeditor';
+import { Document } from '@jupyterlab/lsp';
 
 export class LspCompletionProvider implements ICompletionProvider {
   constructor(options: LspCompletionProvider.IOptions) {
@@ -53,9 +37,7 @@ export class LspCompletionProvider implements ICompletionProvider {
   async fetch(
     request: CompletionHandler.IRequest,
     context: ICompletionContext
-  ): Promise<
-    CompletionHandler.ICompletionItemsReply<CompletionHandler.ICompletionItem>
-  > {
+  ): Promise<any> {
     const path = (context.widget as IDocumentWidget).context.path;
     const adapter = this._manager.adapters.get(path);
     if (!adapter) {
@@ -71,13 +53,17 @@ export class LspCompletionProvider implements ICompletionProvider {
 
     console.debug('VirtualDoc:', adapter.virtualDocument);
 
-    const lspConnection = this._manager.connections.get(adapter.documentPath);
+    const lspConnection = this._manager.connections.get(
+      adapter.virtualDocument.uri
+    );
     if (!lspConnection) {
       console.debug('No connection');
       return { start: 0, end: 0, items: [] };
     }
 
-    const editor = adapter.activeEditor?.getEditor();
+    const editor = adapter.activeEditor as any;
+    // const offset = editor.getoffsetat(cursor)
+    // the offset is also on the request
 
     console.debug('Editor:', editor);
     if (!editor) {
@@ -85,22 +71,39 @@ export class LspCompletionProvider implements ICompletionProvider {
       return { start: 0, end: 0, items: [] };
     }
     console.log('Got editor' + editor);
-    const selection = editor.getSelection();
-    lspConnection.clientRequests['textDocument/completion']
+    const selection = editor.getEditor().getSelection();
+    const virtualDocument = adapter.virtualDocument;
+    const cursor = editor.getEditor().getCursorPosition();
+    //const token = editor.getEditor().getTokenAtCursor();
+    const offset = editor.getEditor().getOffsetAt(cursor);
+
+    const cursorInRoot = this.transformFromEditorToRoot(
+      virtualDocument,
+      editor,
+      cursor
+    );
+
+    const virtualCursor = virtualDocument.virtualPositionAtDocument(
+      cursorInRoot as ISourcePosition
+    );
+
+    const positionInDoc = {
+      character: virtualCursor.ch,
+      line: virtualCursor.line
+    };
+
+    return lspConnection.clientRequests['textDocument/completion']
       .request({
-        position: {
-          character: selection.start.column,
-          line: selection.start.line
-        },
+        position: { ...positionInDoc },
         textDocument: { uri: adapter.virtualDocument.uri }
       })
-      .then(async resp => {
+      .then(resp => {
         console.debug('resp', resp);
         const items = [] as CompletionHandler.ICompletionItem[];
         items.push(...(resp as any).items);
         const response = {
-          start: selection.start.column - selection.end.column,
-          end: selection.end.column,
+          start: offset - selection.start.column,
+          end: offset,
           items: items,
           source: {
             name: 'LSP',
@@ -113,12 +116,19 @@ export class LspCompletionProvider implements ICompletionProvider {
       .catch(e => {
         console.debug(e);
       });
+  }
 
-    const promise: Promise<CompletionHandler.ICompletionItemsReply | any> =
-      new Promise(() => 'done');
-
-    console.log('In fetch' + this._manager);
-    return promise;
+  transformFromEditorToRoot(
+    virtualDocument: VirtualDocument,
+    editor: Document.IEditor,
+    position: CodeEditor.IPosition
+  ): any | null {
+    const editorPosition = VirtualDocument.ceToCm(position) as IEditorPosition;
+    const pos = virtualDocument.documentAtSourcePosition(
+      position as unknown as ISourcePosition
+    );
+    console.log(editorPosition, pos);
+    return virtualDocument.transformFromEditorToRoot(editor, editorPosition);
   }
 
   identifier = 'CompletionProvider:lsp';
@@ -128,7 +138,6 @@ export class LspCompletionProvider implements ICompletionProvider {
     | undefined;
   private _manager: ILSPDocumentConnectionManager;
   private _app: JupyterFrontEnd;
-  // //private renderer: IRenderMimeRegistry;
   private _renderMine: IRenderMimeRegistry;
 }
 
