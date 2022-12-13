@@ -20,6 +20,7 @@ import {
 } from '@jupyterlab/lsp';
 import { CodeEditor } from '@jupyterlab/codeeditor';
 import { Document } from '@jupyterlab/lsp';
+import { IRootPosition } from '@jupyterlab/lsp/lib/positioning';
 
 export class LspCompletionProvider implements ICompletionProvider {
   constructor(options: LspCompletionProvider.IOptions) {
@@ -61,7 +62,7 @@ export class LspCompletionProvider implements ICompletionProvider {
       return { start: 0, end: 0, items: [] };
     }
 
-    const editor = adapter.activeEditor as any;
+    const editor = adapter.activeEditor?.getEditor();
 
     console.debug('Editor:', editor);
     if (!editor) {
@@ -69,11 +70,11 @@ export class LspCompletionProvider implements ICompletionProvider {
       return { start: 0, end: 0, items: [] };
     }
     console.log('Got editor' + editor);
-    const selection = editor.getEditor().getSelection();
+    const selection = editor.getSelection();
     const virtualDocument = adapter.virtualDocument;
-    const cursor = editor.getEditor().getCursorPosition();
+    const cursor = editor.getCursorPosition();
     //const token = editor.getEditor().getTokenAtCursor();
-    const offset = editor.getEditor().getOffsetAt(cursor);
+    const offset = editor.getOffsetAt(cursor);
 
     const cursorInRoot = this.transformFromEditorToRoot(
       virtualDocument,
@@ -118,15 +119,14 @@ export class LspCompletionProvider implements ICompletionProvider {
 
   transformFromEditorToRoot(
     virtualDocument: VirtualDocument,
-    editor: Document.IEditor,
+    editor: CodeEditor.IEditor,
     position: CodeEditor.IPosition
-  ): any | null {
+  ): IRootPosition | null {
     const editorPosition = VirtualDocument.ceToCm(position) as IEditorPosition;
-    const pos = virtualDocument.documentAtSourcePosition(
-      position as unknown as ISourcePosition
+    return virtualDocument.transformFromEditorToRoot(
+      editor as unknown as Document.IEditor,
+      editorPosition
     );
-    console.log(editorPosition, pos);
-    return virtualDocument.transformFromEditorToRoot(editor, editorPosition);
   }
 
   identifier = 'CompletionProvider:lsp';
