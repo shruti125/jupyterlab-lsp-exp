@@ -62,8 +62,6 @@ export class LspCompletionProvider implements ICompletionProvider {
     }
 
     const editor = adapter.activeEditor as any;
-    // const offset = editor.getoffsetat(cursor)
-    // the offset is also on the request
 
     console.debug('Editor:', editor);
     if (!editor) {
