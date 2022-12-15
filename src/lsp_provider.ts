@@ -21,6 +21,8 @@ import {
 import { CodeEditor } from '@jupyterlab/codeeditor';
 import { Document } from '@jupyterlab/lsp';
 import { IRootPosition } from '@jupyterlab/lsp/lib/positioning';
+import { CompletionTriggerKind } from '@jupyterlab/lsp/lib/lsp';
+import type * as protocol from 'vscode-languageserver-protocol';
 
 export class LspCompletionProvider implements ICompletionProvider {
   constructor(options: LspCompletionProvider.IOptions) {
@@ -41,7 +43,9 @@ export class LspCompletionProvider implements ICompletionProvider {
   ): Promise<any> {
     const path = (context.widget as IDocumentWidget).context.path;
     const adapter = this._manager.adapters.get(path);
-    if (!adapter) {
+    const editor = adapter?.activeEditor;
+    const ceEditor = adapter?.activeEditor?.getEditor();
+    if (!adapter || !editor || !ceEditor) {
       console.debug('No adapter');
       return { start: 0, end: 0, items: [] };
     }
@@ -62,19 +66,18 @@ export class LspCompletionProvider implements ICompletionProvider {
       return { start: 0, end: 0, items: [] };
     }
 
-    const editor = adapter.activeEditor?.getEditor();
-
-    console.debug('Editor:', editor);
-    if (!editor) {
-      console.debug('No active editor');
-      return { start: 0, end: 0, items: [] };
-    }
     console.log('Got editor' + editor);
-    const selection = editor.getSelection();
+    // const selection = ceEditor.getSelection();
     const virtualDocument = adapter.virtualDocument;
-    const cursor = editor.getCursorPosition();
-    //const token = editor.getEditor().getTokenAtCursor();
-    const offset = editor.getOffsetAt(cursor);
+
+    const cursor = ceEditor.getCursorPosition();
+    const token = ceEditor.getTokenAtCursor();
+
+    // const offset = ceEditor.getOffsetAt(cursor);
+    const start = ceEditor.getPositionAt(token.offset)!;
+
+    const positionInToken = cursor.column - start.column - 1;
+    const typedCharacter = token.value[cursor.column - start.column - 1];
 
     const cursorInRoot = this.transformFromEditorToRoot(
       virtualDocument,
@@ -86,47 +89,99 @@ export class LspCompletionProvider implements ICompletionProvider {
       cursorInRoot as ISourcePosition
     );
 
-    const positionInDoc = {
-      character: virtualCursor.ch,
-      line: virtualCursor.line
+    const params: protocol.CompletionParams = {
+      textDocument: {
+        uri: virtualDocument.documentInfo.uri
+      },
+      position: {
+        line: virtualCursor.line,
+        character: virtualCursor.ch
+      },
+      context: {
+        triggerKind: CompletionTriggerKind.Invoked,
+        triggerCharacter: typedCharacter
+      }
     };
-
     return lspConnection.clientRequests['textDocument/completion']
-      .request({
-        position: { ...positionInDoc },
-        textDocument: { uri: adapter.virtualDocument.uri }
-      })
-      .then(resp => {
-        console.debug('resp', resp);
+      .request(params)
+      .then((lspCompletionItems: any) => {
+        console.log('resp', lspCompletionItems);
+        let prefix = token.value.slice(0, positionInToken + 1);
+        let allNonPrefixed = true;
         const items = [] as CompletionHandler.ICompletionItem[];
-        items.push(...(resp as any).items);
+        lspCompletionItems.items.forEach((match: any) => {
+          const text = match.insertText ? match.insertText : match.label;
+
+          if (text.toLowerCase().startsWith(prefix.toLowerCase())) {
+            allNonPrefixed = false;
+            if (prefix !== token.value) {
+              if (text.toLowerCase().startsWith(token.value.toLowerCase())) {
+                prefix = token.value;
+              }
+            }
+          } else if (token.type === 'string' && prefix.includes('/')) {
+            const parts = prefix.split('/');
+            if (
+              text
+                .toLowerCase()
+                .startsWith(parts[parts.length - 1].toLowerCase())
+            ) {
+              let pathPrefix = parts.slice(0, -1).join('/') + '/';
+              match.insertText = pathPrefix + match.insertText;
+              // for label removing the prefix quote if present
+              if (pathPrefix.startsWith("'") || pathPrefix.startsWith('"')) {
+                pathPrefix = pathPrefix.substr(1);
+              }
+              match.label = pathPrefix + match.label;
+              allNonPrefixed = false;
+            }
+          }
+
+          const completionItem: CompletionHandler.ICompletionItem = {
+            label: match.label,
+            documentation: (match.documentation as string) ?? '',
+            insertText: match.insertText ?? undefined
+          };
+
+          items.push(completionItem as any);
+        });
+        let prefixOffset = token.value.length;
+
+        if (allNonPrefixed && prefixOffset > prefix.length) {
+          prefixOffset = prefix.length;
+        }
+
         const response = {
-          start: offset - selection.start.column,
-          end: offset,
+          start: token.offset + (allNonPrefixed ? prefixOffset : 0),
+          end: token.offset + prefix.length,
           items: items,
           source: {
             name: 'LSP',
             priority: 2
           }
         };
-
+        if (response.start > response.end) {
+          console.log(
+            'Response contains start beyond end; this should not happen!',
+            response
+          );
+        }
+        console.log('res', response);
+        
         return response;
       })
       .catch(e => {
-        console.debug(e);
+        console.log(e);
       });
   }
 
   transformFromEditorToRoot(
     virtualDocument: VirtualDocument,
-    editor: CodeEditor.IEditor,
+    editor: Document.IEditor,
     position: CodeEditor.IPosition
   ): IRootPosition | null {
     const editorPosition = VirtualDocument.ceToCm(position) as IEditorPosition;
-    return virtualDocument.transformFromEditorToRoot(
-      editor as unknown as Document.IEditor,
-      editorPosition
-    );
+    return virtualDocument.transformFromEditorToRoot(editor, editorPosition);
   }
 
   identifier = 'CompletionProvider:lsp';
