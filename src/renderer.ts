@@ -6,34 +6,44 @@ export class BBCompletionRenderer
   extends Completer.Renderer
   implements Completer.IRenderer
 {
-  // private app: JupyterFrontEnd;
-  // private renderMimeRegistry: IRenderMimeRegistry;
-  // private namespaces: Map<string, string>;
+  private app: JupyterFrontEnd;
+  private renderMimeRegistry: IRenderMimeRegistry;
 
   constructor(app: JupyterFrontEnd, renderMimeRegistry: IRenderMimeRegistry) {
+    //constructor() {
     super();
-    // this.app = app;
-    // this.renderMimeRegistry = renderMimeRegistry;
-    // this.namespaces = new Map<string, string>();
+    this.app = app;
+    this.renderMimeRegistry = renderMimeRegistry;
+    console.log(this.app);
+    console.log(this.renderMimeRegistry);
   }
 
   createCompletionItemNode(
     item: CompletionHandler.ICompletionItem,
     orderedTypes: string[]
   ): HTMLLIElement {
-    // const label = item.label;
-    // console.log('In createCompletionItemNode:  ' + label);
+    const label = item.label;
+    console.log('In createCompletionItemNode:  ' + label);
     const li = super.createCompletionItemNode(item, orderedTypes);
     return li;
   }
 
-  createDocumentationNode(
+  createDocumentationNode = (
     item: CompletionHandler.ICompletionItem
-  ): HTMLElement {
-    const node = document.createElement('div');
-    // need to add namespace back for inspect request
-    node.innerHTML = '<h1>Hi</h1>';
+  ): HTMLElement => {
+    const node = super.createDocumentationNode(item);
+    const text = item.insertText ? item.insertText : item.label;
+    const button = document.createElement('button');
+    button.innerHTML = 'Click here for detailed documentation example';
+    button.title = 'View additional documentation in side panel';
+    button.onclick = async () => {
+      await this.app.commands.execute('inspector:open', {
+        refresh: true,
+        text
+      });
+    };
+    node.appendChild(button);
 
     return node;
-  }
+  };
 }

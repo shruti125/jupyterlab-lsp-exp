@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import {
   Completer,
+  //Completer,
   CompletionHandler,
   ICompletionContext,
   ICompletionProvider
@@ -11,25 +12,27 @@ import { IDocumentWidget } from '@jupyterlab/docregistry';
 import { ILSPDocumentConnectionManager } from '@jupyterlab/lsp';
 import { JupyterFrontEnd } from '@jupyterlab/application';
 import { IRenderMimeRegistry } from '@jupyterlab/rendermime';
-import { BBCompletionRenderer } from './renderer';
 import { VirtualDocument } from '@jupyterlab/lsp';
-import {
-  IEditorPosition,
-  // IRootPosition,
-  ISourcePosition
-} from '@jupyterlab/lsp';
+import { IEditorPosition, ISourcePosition } from '@jupyterlab/lsp';
 import { CodeEditor } from '@jupyterlab/codeeditor';
 import { Document } from '@jupyterlab/lsp';
 import { IRootPosition } from '@jupyterlab/lsp/lib/positioning';
 import { CompletionTriggerKind } from '@jupyterlab/lsp/lib/lsp';
 import type * as protocol from 'vscode-languageserver-protocol';
+import { BBCompletionRenderer } from './renderer';
+import { KernelMessage } from '@jupyterlab/services';
+import { inspectorIcon } from '@jupyterlab/ui-components';
 
 export class LspCompletionProvider implements ICompletionProvider {
+  private _app: JupyterFrontEnd;
+  private _rendermime: IRenderMimeRegistry;
+
   constructor(options: LspCompletionProvider.IOptions) {
     this._manager = options.manager;
     this._app = options.app;
-    this._renderMine = options.renderMimeRegistry;
-    this.renderer = new BBCompletionRenderer(this._app, this._renderMine);
+    this._rendermime = options.renderMimeRegistry;
+    this.renderer = new BBCompletionRenderer(this._app, this._rendermime);
+    //this.renderer = new BBCompletionRenderer();
   }
 
   async isApplicable(context: ICompletionContext): Promise<boolean> {
@@ -49,15 +52,11 @@ export class LspCompletionProvider implements ICompletionProvider {
       console.debug('No adapter');
       return { start: 0, end: 0, items: [] };
     }
-
     await adapter.ready;
-
     this._manager.connections.forEach((val, key) =>
       console.debug('key:', key, val)
     );
-
     console.debug('VirtualDoc:', adapter.virtualDocument);
-
     const lspConnection = this._manager.connections.get(
       adapter.virtualDocument.uri
     );
@@ -67,15 +66,14 @@ export class LspCompletionProvider implements ICompletionProvider {
     }
 
     console.log('Got editor' + editor);
-    // const selection = ceEditor.getSelection();
     const virtualDocument = adapter.virtualDocument;
 
     const cursor = ceEditor.getCursorPosition();
     const token = ceEditor.getTokenAtCursor();
 
-    // const offset = ceEditor.getOffsetAt(cursor);
     const start = ceEditor.getPositionAt(token.offset)!;
-
+    // const offset = ceEditor.getOffsetAt(cursor);
+    // const selection = ceEditor.getSelection();
     const positionInToken = cursor.column - start.column - 1;
     const typedCharacter = token.value[cursor.column - start.column - 1];
 
@@ -84,7 +82,6 @@ export class LspCompletionProvider implements ICompletionProvider {
       editor,
       cursor
     );
-
     const virtualCursor = virtualDocument.virtualPositionAtDocument(
       cursorInRoot as ISourcePosition
     );
@@ -102,6 +99,7 @@ export class LspCompletionProvider implements ICompletionProvider {
         triggerCharacter: typedCharacter
       }
     };
+
     return lspConnection.clientRequests['textDocument/completion']
       .request(params)
       .then((lspCompletionItems: any) => {
@@ -139,8 +137,9 @@ export class LspCompletionProvider implements ICompletionProvider {
 
           const completionItem: CompletionHandler.ICompletionItem = {
             label: match.label,
-            documentation: (match.documentation as string) ?? '',
-            insertText: match.insertText ?? undefined
+            documentation: (match.documentation as string) ?? match.label,
+            insertText: match.insertText ?? undefined,
+            icon: inspectorIcon
           };
 
           items.push(completionItem as any);
@@ -152,6 +151,8 @@ export class LspCompletionProvider implements ICompletionProvider {
         }
 
         const response = {
+          // start: offset - selection.start.column,
+          // end: offset,
           start: token.offset + (allNonPrefixed ? prefixOffset : 0),
           end: token.offset + prefix.length,
           items: items,
@@ -167,12 +168,57 @@ export class LspCompletionProvider implements ICompletionProvider {
           );
         }
         console.log('res', response);
-        
+
         return response;
       })
       .catch(e => {
         console.log(e);
       });
+  }
+
+  /**
+   * Kernel provider will use the inspect request to lazy-load the content
+   * for document panel.
+   */
+  async resolve(
+    item: CompletionHandler.ICompletionItem,
+    context: ICompletionContext,
+    patch?: Completer.IPatch | null
+  ): Promise<CompletionHandler.ICompletionItem> {
+    const { editor, session } = context;
+    if (session && editor) {
+      let code = editor.model.sharedModel.getSource();
+
+      const position = editor.getCursorPosition();
+      // let offset = Text.jsIndexToCharIndex(editor.getOffsetAt(position), code);
+      let offset = editor.getOffsetAt(position);
+      const kernel = session.kernel;
+      if (!code || !kernel) {
+        return Promise.resolve(item);
+      }
+      if (patch) {
+        const { start, value } = patch;
+        code = code.substring(0, start) + value;
+        offset = offset + value.length;
+      }
+
+      const contents: KernelMessage.IInspectRequestMsg['content'] = {
+        code,
+        cursor_pos: offset,
+        detail_level: 0
+      };
+      const msg = await kernel.requestInspect(contents);
+      const value = msg.content;
+      if (value.status !== 'ok' || !value.found) {
+        return item;
+      }
+      // Get the first line above the docstring
+      const data = value.data['text/plain'] as string;
+      const index = data.search('Docstring');
+      item.documentation = data.substring(0, index);
+      return item;
+    }
+    return item;
   }
 
   transformFromEditorToRoot(
@@ -185,13 +231,8 @@ export class LspCompletionProvider implements ICompletionProvider {
   }
 
   identifier = 'CompletionProvider:lsp';
-  renderer:
-    | Completer.IRenderer<CompletionHandler.ICompletionItem>
-    | null
-    | undefined;
+  readonly renderer?: Completer.IRenderer<CompletionHandler.ICompletionItem>;
   private _manager: ILSPDocumentConnectionManager;
-  private _app: JupyterFrontEnd;
-  private _renderMine: IRenderMimeRegistry;
 }
 
 export namespace LspCompletionProvider {
