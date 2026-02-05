@@ -44,7 +44,7 @@ jupyter labextension develop . --overwrite
 jlpm build
 ```
 
-You can watch the source directory and run JupyterLab at the same time in different terminals to watch for changes in the extension's source and automatically rebuild the extension.
+You can watch the source directory and run JupyterLab at the same time in different terminals to watch for changes in the extension's source and automatically rebuild the extension..
 
 ```bash
 # Watch the source directory in one terminal, automatically rebuilding when needed
